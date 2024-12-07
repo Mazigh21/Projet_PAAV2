@@ -1,10 +1,11 @@
 package Modele;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class Colonie {
     /**
@@ -56,8 +57,28 @@ public class Colonie {
                 return;
             }
             // Si la lecture s'est bien passée, les colons, ressources, conflits et préférences sont déjà configurés
-            proposerSolutionNaive();
-            gererAffectations();
+            boolean fin = false;
+            while (!fin) {
+                afficherMenuGeneral(); // Afficher le menu général pour les options disponibles
+                int choix = sc.nextInt();
+                sc.nextLine(); 
+    
+                switch (choix) {
+                    case 1:
+                    resolutionGloutonne(); // Résolution automatique des affectations 
+                        break;
+                    case 2:
+                        sauvegarderSolution(); // Sauvegarder la solution
+                        break;
+                    case 3:
+                        fin = true; // Terminer le programme
+                        System.out.println("Programme terminé.");
+                        break;
+                    default:
+                        System.out.println("Choix incorrect, veuillez réessayer.");
+                }
+            }
+    
         } else {
             // Mode manuel
             initialiserColons();
@@ -267,6 +288,8 @@ public class Colonie {
             }
         }
         afficherAffectations();
+        System.out.println("Coût de la solution : " + calculerCoutSolution());
+        
     }
 
     private void gererAffectations() {
@@ -641,4 +664,126 @@ public class Colonie {
         }
         return args;
     }
+
+     private boolean sontEnConflit(String colon, String autreColon) {
+        // Construire les deux formes possibles d'un conflit
+        String conflitDirect = colon + "-" + autreColon;
+        String conflitInverse = autreColon + "-" + colon;
+
+        // Vérifier si l'un des deux conflits existe dans l'ensemble des conflits
+        return conflits.contains(conflitDirect) || conflits.contains(conflitInverse);
+    }
+
+    /*
+     Méthode de résolution glutonne plus optimale
+     */
+    private void resolutionGloutonne() {
+        // Étape 1:Initialisation
+        Set<String> ressourcesAttribuees = new HashSet<>();
+        for (String colon : colons) {
+            List<String> prefs = preferences.get(colon);
+            for (String ressource : prefs) {
+                if (!ressourcesAttribuees.contains(ressource)) {
+                    affectations.put(colon, ressource);
+                    ressourcesAttribuees.add(ressource);
+                    break;
+                }
+            }
+        }
+        // Variables pour suivre la meilleure solution
+        Map<String, String> meilleureAffectation = new HashMap<>(affectations);
+        int meilleurCout = calculerCoutSolution();
+    
+        // Étape 2:Minimisation des jalousies
+        boolean amelioration;
+        do {
+            amelioration = false;
+            for (String colon : colons) {
+                for (String autreColon : colons) {
+                    if (!colon.equals(autreColon)) {
+                        String ressourceColon = affectations.get(colon);
+                        String ressourceAutre = affectations.get(autreColon);
+    
+                        // Échange des ressources
+                        affectations.put(colon, ressourceAutre);
+                        affectations.put(autreColon, ressourceColon);
+    
+                        // Calcul du nouveau coût
+                        int nouveauCout = calculerCoutSolution();
+    
+                        if (nouveauCout < meilleurCout) {
+                            // Mise à jour de la meilleure solution
+                            meilleurCout = nouveauCout;
+                            meilleureAffectation = new HashMap<>(affectations);
+                            amelioration = true;
+                        } else {
+                            // Annuler l'échange si pas d'amélioration
+                            affectations.put(colon, ressourceColon);
+                            affectations.put(autreColon, ressourceAutre);
+                        }
+                    }
+                }
+            }
+        } while (amelioration);
+    
+        // Affichage de la meilleure solution trouvée
+        affectations = meilleureAffectation;
+        afficherAffectations();
+        System.out.println("Coût de la solution : " + meilleurCout);
+    }
+
+    /* Menu qui s'affiche lorsque l'utilisateur utilise un fichier */
+    private void afficherMenuGeneral() {
+        System.out.println("\nMenu:");
+        System.out.println("1 - Résolution automatique");
+        System.out.println("2 - Sauvegarder la solution actuelle");
+        System.out.println("3 - Fin");
+        System.out.print("Choix: ");
+    }
+
+    /*Calculer le cout d'une solution (le nombre de colons jaloux) */
+    private int calculerCoutSolution() {
+        int cout = 0;
+    
+        for (String colon : colons) {
+            String ressourceColon = affectations.get(colon);
+            List<String> preferencesColon = preferences.get(colon);
+    
+            if (preferencesColon != null && ressourceColon != null) {
+                int rangActuel = preferencesColon.indexOf(ressourceColon);
+    
+                for (String autreColon : colons) {
+                    if (sontEnConflit(colon, autreColon)) {
+                        String ressourceAutre = affectations.get(autreColon);
+                        int rangAutre = preferencesColon.indexOf(ressourceAutre);
+    
+                        if (rangAutre >= 0 && rangAutre < rangActuel) {
+                            cout++;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    
+        return cout;
+    }
+
+    
+    private void sauvegarderSolution() {
+        System.out.println("Veuillez entrer le nom du fichier pour sauvegarder la solution (par exemple : solution.txt) :");
+        String nomFichier = sc.nextLine().trim();
+    
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(nomFichier))) {
+            for (String colon : affectations.keySet()) {
+                String ressource = affectations.get(colon);
+                writer.write(colon + ":" + ressource);
+                writer.newLine();
+            }
+            System.out.println("Solution sauvegardée avec succès dans le fichier : " + nomFichier);
+        } catch (IOException e) {
+            System.out.println("Une erreur est survenue lors de la sauvegarde de la solution : " + e.getMessage());
+        }
+    }
+
 }
